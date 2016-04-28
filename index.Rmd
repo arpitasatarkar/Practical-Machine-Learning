@@ -1,0 +1,203 @@
+---
+title: 'Project Assignment : Practical Machine Learning'
+author: "Arpita Satarkar"
+date: "April 23, 2016"
+output: 
+  html_document:
+    keep_md: true
+---
+
+# Introduction
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Goal
+
+The goal of the project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+# Loading Libraries
+
+The libraries required for the analysis are loaded here.
+
+```{r}
+library(caret)
+library(randomForest)
+```
+
+# Reading Training and Testing Data
+
+The training data from the above link is downloaded to the local machine and is then loaded into R using the read.csv() function as below.
+
+```{r}
+training <- read.csv("C:/Users/satarar/Documents/Practical Machine Learning/pml-training.csv", 
+                      header = TRUE, sep = ",", 
+                      na.strings = c("NA", "#DIV/0!"))
+
+dim(training)
+```
+
+The training data has <b>19622</b> observations accross <b>160</b> varaibles for each of the 6 participants. The participants can be distinguished with the help of the user_name variable. The data starting column 8 to 159 is relevent to the various accelerometer. The last variable of the training set <b>classe </b> having values A to E  indicates the execution type of the exercise.
+
+The testing data from the above link is downloaded to the local machine and is then loaded into R using the read.csv() function as below.
+
+```{r}
+testing <- read.csv("C:/Users/satarar/Documents/Practical Machine Learning/pml-testing.csv", 
+                      header = TRUE, sep = ",", 
+                      na.strings = c("NA", "#DIV/0!"))
+
+dim(testing)
+```
+
+The testing data has <b>20</b> observations accross <b>160</b> varaibles for each of the 6 participants. The participants can be distinguished with the help of the user_name variable. The data starting column 8 to 159 is relevent to the various accelerometers.
+
+# Working with Training Data Set
+
+We will be using the training data set to build our initial model.
+
+## Data Cleaning
+
+Prior to using the training data set we clean the data so as to obtain more meaningful data. Below are few setps performed to achieve a clean training data set.
+
+### 1. Ignoring unnecessary columns 
+
+As we look at the dataset the first 7 columns will not be used in our analysis as excluding them does not significantly impact our analysis. These varaibles are row_index, user_name, timestamp and window. So, we remove them from our training data set and modify the data set to meet our requirements.
+
+```{r}
+drops <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
+training <- training[ , !(names(training) %in% drops)]
+dim(training)
+```
+
+
+### 2. Ignoring columns with NA values in most of the observations
+
+The columns if have NA values most of the time will not play significant in our analysis. We first obtain the count of NA's for each of 153 columns and ignore the once which have data for less than 19,000 observations.
+
+```{r}
+na_count <-sapply(training, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+omitColumns <- which(na_count > 19000)
+training <- training[, -omitColumns]
+dim(training)
+```
+
+Thus, we are left with only 53 columns which has enough data for us to be used in our analysis. Below is the glance of these variables and the training data set to be used.
+
+```{r}
+str(training)
+```
+
+## Data Partitioning
+
+In this section we will begin with the first step in building the data model i.e. to generate training data set (about 60% of the data) and testing data set. Creating partition amongst the training set will allow us to estimate the out of sample error of our predictor. We will be using the caret package for this purpose. We will begin by setting seed to ensure reproducibilty.
+
+```{r}
+set.seed(1356)
+inTrain <- createDataPartition(y=training$classe, p=0.6, list = FALSE)
+```
+
+```{r}
+myTrain <- training[inTrain,]
+dim(myTrain)
+
+myTest <- training[-inTrain,]
+dim(myTest)
+```
+
+
+## Training the Predictor
+
+In this analysis we begin with using the Random Forest model as it shows good results in case of classification prediction. We then look at the performance of this model before accepting it.
+
+```{r}
+modFit <- randomForest(classe~., data=myTrain, ntree=501)
+modFit
+```
+
+As the above results show, the resulting predictor has a quite low OOB (out-of-bag) error estimate. The confusion matrix for the training set indicates that the predictor is accurate on that set.
+
+
+# Model Evaluation
+
+After training the predictor we use it on the testing subsample we constructed before, to get an estimate of its out of sample error.
+
+```{r}
+predictMyTest <- predict(modFit, newdata = myTest)
+```
+
+The error estimate can be obtained with the confusionMatrix function of the caret package:
+
+```{r}
+confusionMatrix(predictMyTest, myTest$classe)
+```
+
+Both the accuracy and the Cohen's kappa indicator of concordance indicate that the predictor seems to have a low out of sample error rate.
+
+# Re-training the Selected Model
+
+Before predicting on the test set, it is important to train the model on the full training set (training), rather than using a model trained on a reduced training set (myTrain), in order to produce the most accurate predictions. Therefore, I now repeat everything I did above on training and testing:
+
+```{r}
+
+# Cleaning the testing data set
+
+testing <- testing[ , !(names(testing) %in% drops)]
+testing <- testing[, -omitColumns]
+```
+
+
+```{r}
+
+# Training the Predictor on entire training data set
+
+modFitN <- randomForest(classe~., data=training, ntree=501)
+modFitN
+```
+
+```{r}
+
+# Model Evaluation
+
+predictTesting <- predict(modFitN, newdata = testing)
+
+# convert predictions to character vector
+
+predictTesting <- as.character(predictTesting)
+```
+
+# Generating Files to submit as answers for the Assignment
+
+Function to generate files with predictions to submit for assignment
+
+```{r}
+
+# create function to write predictions to files
+
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+
+# create prediction files to submit
+
+pml_write_files(predictTesting)
+```
+
+
